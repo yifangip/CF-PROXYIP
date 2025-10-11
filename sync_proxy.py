@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import requests
 import os
 import time
@@ -65,66 +68,43 @@ def fetch_proxy_data():
 # ==============================
 def get_dns_records():
     url = f'https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records?type=A'
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
         return response.json().get('result', [])
-    else:
-        print('❌ 获取 DNS 记录失败:', response.text)
+    except Exception as e:
+        traceback.print_exc()
+        print("❌ 获取 DNS 记录失败")
         return []
 
-def record_exists(name, ip, existing_records):
-    for record in existing_records:
-        if record["name"] == name and record["content"] == ip:
-            return True
-    return False
-
-# ==============================
-# 🧱 创建与删除逻辑
-# ==============================
-def create_record_if_not_exists(name, cf_ip, existing_records):
-    text = f"{name} → {cf_ip}"
-
-    if record_exists(name, cf_ip, existing_records):
-        return ("已存在", text)
-
+def create_record(name, ip):
     url = f'https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records'
-    data = {'type': 'A', 'name': name, 'content': cf_ip, 'ttl': 1}
-
+    data = {'type': 'A', 'name': name, 'content': ip, 'ttl': 1}
     try:
         response = requests.post(url, headers=headers, json=data, timeout=15)
         resp_json = response.json()
-
         if response.status_code in [200, 201] and resp_json.get('success', False):
-            print(f"✅ 创建成功: {name} → {cf_ip}")
-            return ("新增", text)
-        else:
-            # 81058 常见表示已存在
-            if any(err.get('code') == 81058 for err in resp_json.get('errors', [])):
-                print(f"ℹ️ 已存在（API反馈）: {name} → {cf_ip}")
-                return ("已存在", text)
-            err_msg = resp_json.get('errors') or resp_json.get('message') or "未知错误"
-            print(f"❌ 创建失败: {name} → {cf_ip}")
-            return ("失败", f"{text}（错误: {err_msg}）")
+            return True
+        # 处理已存在的情况
+        if any(err.get('code') == 81058 for err in resp_json.get('errors', [])):
+            return True
+        return False
     except Exception as e:
         traceback.print_exc()
-        return ("失败", f"{text}（网络异常: {e}）")
+        return False
 
 def bulk_delete(records_to_delete):
-    messages = []
+    deleted_count = 0
     for record in records_to_delete:
         url = f'https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records/{record["id"]}'
         try:
             response = requests.delete(url, headers=headers, timeout=15)
             if response.status_code == 200:
-                print(f"🗑 删除成功: {record['name']} → {record['content']}")
-                messages.append(("删除", f"{record['name']} → {record['content']}"))
-            else:
-                print(f"⚠️ 删除失败: {record['name']} → {record['content']}")
-                messages.append(("失败", f"{record['name']} → {record['content']}（删除失败）"))
-        except Exception as e:
-            traceback.print_exc()
-            messages.append(("失败", f"{record['name']} → {record['content']}（网络异常: {e}）"))
-    return messages
+                deleted_count += 1
+            time.sleep(0.2)
+        except:
+            pass
+    return deleted_count
 
 # ==============================
 # 📢 Telegram 推送
@@ -135,7 +115,7 @@ def send_tg_message(text):
         resp = requests.post(f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage', json=data, timeout=15)
         if resp.status_code != 200:
             print(f"⚠️ Telegram 推送失败: {resp.text}")
-        time.sleep(1.2)
+        time.sleep(1)
     except Exception as e:
         print(f"❌ Telegram 网络异常: {e}")
 
@@ -154,48 +134,23 @@ def send_tg_file(file_path, caption="同步日志文件"):
         print(f"❌ 上传文件异常: {e}")
 
 # ==============================
-# 📝 推送汇总 + 日志生成
+# 🔄 按国家全量同步
 # ==============================
-def push_summary(statused_messages, proxy_data):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    total_ips = len(proxy_data)
-    country_count = defaultdict(int)
-    for entry in proxy_data:
-        country_count[entry["country"]] += 1
+def sync_country_records(country, ips, managed_records):
+    record_name = f"{CF_BASE_NAME}_{country}"
 
-    tg_text = f"📢 *Cloudflare DNS 同步结果汇总*\n"
-    tg_text += f"🕒 更新时间：`{now}`\n"
-    tg_text += f"🌍 本次共同步 IP 数量：*{total_ips}*\n\n"
-    tg_text += "🌎 各国家 IP 数量：\n"
-    for country, count in sorted(country_count.items()):
-        tg_text += f"• {country}：{count} 条\n"
+    # 删除旧记录
+    old_records = [r for r in managed_records if r["name"] == record_name]
+    deleted_count = bulk_delete(old_records) if old_records else 0
 
-    for i in range(0, len(tg_text), 3800):
-        send_tg_message(tg_text[i:i + 3800])
+    # 添加新记录
+    added_count = 0
+    for ip in ips:
+        if create_record(record_name, ip):
+            added_count += 1
+        time.sleep(0.2)
 
-    # 清除旧日志，仅保留最新
-    for file in os.listdir('.'):
-        if file.startswith("PROXYIP_") and file.endswith(".txt"):
-            try:
-                os.remove(file)
-                print(f"🧹 已删除旧日志: {file}")
-            except:
-                pass
-
-    log_path = f"PROXYIP_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write("📜 Cloudflare DNS 同步日志\n")
-        f.write(f"更新时间：{now}\n")
-        f.write("-" * 60 + "\n")
-
-        for status, text in statused_messages:
-            f.write(f"{status:<6} | {text}\n")
-
-        f.write("-" * 60 + "\n")
-        f.write("（以上为本次同步的所有记录情况）\n")
-
-    send_tg_file(log_path, caption="📄 同步日志（含详细记录）")
-    send_tg_message("✅ 本次 Cloudflare 同步任务已完成 ✅")
+    return deleted_count, added_count
 
 # ==============================
 # 🚀 主逻辑
@@ -211,25 +166,34 @@ def main():
     existing_records = get_dns_records()
     managed_records = [r for r in existing_records if r["name"].startswith(f"{CF_BASE_NAME}_")]
 
+    # 按国家分组
     country_groups = defaultdict(list)
     for entry in proxy_data:
         country_groups[entry["country"]].append(entry["ip"])
 
-    statused_messages = []
-
+    # 汇总每个国家同步结果
+    summary = []
     for country, ips in country_groups.items():
-        record_name = f"{CF_BASE_NAME}_{country}"
-        for ip in ips:
-            status, text = create_record_if_not_exists(record_name, ip, managed_records)
-            statused_messages.append((status, text))
-            time.sleep(0.2)
+        deleted_count, added_count = sync_country_records(country, ips, managed_records)
+        summary.append(f"🌍 {country}: 删除 {deleted_count} 条，新增 {added_count} 条")
+        print(summary[-1])
 
-    csv_ips_set = {e["ip"] for e in proxy_data}
-    records_to_delete = [r for r in managed_records if r["content"] not in csv_ips_set]
-    if records_to_delete:
-        statused_messages.extend(bulk_delete(records_to_delete))
+    # Telegram 汇总消息
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tg_text = f"📢 *Cloudflare DNS 同步汇总*\n🕒 更新时间：`{now}`\n\n" + "\n".join(summary)
+    send_tg_message(tg_text)
 
-    push_summary(statused_messages, proxy_data)
+    # 生成详细日志文件
+    log_path = f"PROXYIP_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("📜 Cloudflare DNS 同步日志\n")
+        f.write(f"更新时间：{now}\n")
+        f.write("-" * 60 + "\n")
+        for line in summary:
+            f.write(line + "\n")
+        f.write("-" * 60 + "\n")
+    send_tg_file(log_path, caption="📄 同步日志（含详细记录）")
+    send_tg_message("✅ 本次 Cloudflare 同步任务已完成 ✅")
 
 if __name__ == '__main__':
     main()
