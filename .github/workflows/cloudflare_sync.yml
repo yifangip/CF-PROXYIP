@@ -53,6 +53,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add proxyip_443_sorted.txt
           git commit -m "更新过滤后的 443 个代理 [skip ci]" || echo "No changes to commit"
+          
+          # 设置正确的远程仓库地址为你自己的仓库
+          git remote set-url origin https://github.com/${{ github.repository }}.git
+
           git push origin HEAD
 
       # ---------------------------
@@ -81,4 +85,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PROXYIP_*.txt
           git commit -m "更新 Cloudflare 同步日志 [skip ci]" || echo "No new logs to commit"
+          
+          # 设置正确的远程仓库地址为你自己的仓库
+          git remote set-url origin https://github.com/${{ github.repository }}.git
+
           git push origin HEAD
