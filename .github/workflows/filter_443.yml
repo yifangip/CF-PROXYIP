@@ -1,0 +1,39 @@
+name: Filter 443 Proxies
+
+on:
+  workflow_dispatch:
+  schedule:
+   - cron: '0 6 * * *'  # 每天上午6点执行一次
+
+jobs:
+  filter443:
+    runs-on: ubuntu-latest
+
+    env:
+      MAX_PER_COUNTRY: 10  # 每个国家最多保留条数，可手动修改
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: true  # 允许 workflow 推送代码
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install --upgrade pip requests
+
+      - name: Run filter_443.py
+        run: python filter_443.py
+
+      - name: Commit and push generated file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add proxyip_443_sorted.txt
+          git commit -m "Update filtered 443 proxies [skip ci]" || echo "No changes to commit"
+          git push origin HEAD
