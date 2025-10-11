@@ -22,8 +22,7 @@ jobs:
         run: pip install requests
 
       - name: 运行脚本
-        run: |
-          python3 your_script.py
+        run: python3 your_script.py
         env:
           INPUT_URL: "https://zip.cm.edu.kg/all.txt"
           OUTPUT_FILE: "proxyip_443_sorted.txt"
