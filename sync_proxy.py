@@ -5,9 +5,9 @@ import os, requests, time
 from datetime import datetime
 from collections import defaultdict
 
-# -----------------------------
+# ==============================
 # 环境变量
-# -----------------------------
+# ==============================
 REQUIRED_ENV_VARS = ["CF_API_TOKEN", "CF_ZONE_ID", "BOT_TOKEN", "CHAT_ID"]
 for v in REQUIRED_ENV_VARS:
     if v not in os.environ:
@@ -23,9 +23,9 @@ TXT_FILE = os.getenv("TXT_FILE", "proxyip_443_sorted.txt")
 
 HEADERS = {'Authorization': f'Bearer {CF_API_TOKEN}', 'Content-Type': 'application/json'}
 
-# -----------------------------
+# ==============================
 # 读取 TXT 文件
-# -----------------------------
+# ==============================
 def fetch_proxy_data():
     if not os.path.exists(TXT_FILE):
         print(f"❌ TXT 文件不存在: {TXT_FILE}")
@@ -38,16 +38,16 @@ def fetch_proxy_data():
                 continue
             try:
                 ip, country = line.split("#")
-                ip = ip.split(":")[0].strip()
+                ip = ip.split(":")[0].strip()   # 只取 IP，忽略端口
                 country = country.strip().upper()
                 data.append({"ip": ip, "country": country})
             except:
                 continue
     return data
 
-# -----------------------------
+# ==============================
 # Cloudflare DNS
-# -----------------------------
+# ==============================
 def get_all_dns_records():
     records = []
     page = 1
@@ -93,9 +93,9 @@ def create_records(name, ips):
             pass
     return created_ips
 
-# -----------------------------
+# ==============================
 # Telegram
-# -----------------------------
+# ==============================
 def send_tg_message(text):
     try:
         requests.post(f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
@@ -115,9 +115,9 @@ def send_tg_file(file_path, caption="同步日志文件"):
     except:
         pass
 
-# -----------------------------
+# ==============================
 # 删除旧日志
-# -----------------------------
+# ==============================
 def cleanup_old_logs():
     for file in os.listdir('.'):
         if file.startswith("PROXYIP_") and file.endswith(".txt"):
@@ -126,16 +126,19 @@ def cleanup_old_logs():
             except:
                 pass
 
-# -----------------------------
-# 全量同步
-# -----------------------------
+# ==============================
+# 同步单个国家
+# ==============================
 def sync_country_records(country, ips, managed_records):
     name = f"{CF_BASE_NAME}_{country}"
-    old_records = [r for r in managed_records if r["name"] == name]
+    # 删除该国家所有旧记录
+    old_records = [r for r in managed_records if r["name"].lower() == name.lower()]
     deleted_ips = delete_records(old_records)
+
+    # 添加新记录
     created_ips = create_records(name, ips)
 
-    # 控制台输出删除/新增情况
+    # GitHub Actions 控制台日志显示
     print(f"🌍 {country}: 删除 {len(deleted_ips)} 条，新增 {len(created_ips)} 条")
     if created_ips:
         for ip in created_ips:
@@ -144,11 +147,11 @@ def sync_country_records(country, ips, managed_records):
         for ip in deleted_ips:
             print(f"  - {ip}")
 
-    return created_ips  # 只返回新增 IP 给 Telegram
+    return created_ips  # 只给 Telegram 使用新增 IP
 
-# -----------------------------
+# ==============================
 # 主逻辑
-# -----------------------------
+# ==============================
 def main():
     proxy_data = fetch_proxy_data()
     total_ips = len(proxy_data)
@@ -161,6 +164,7 @@ def main():
     existing_records = get_all_dns_records()
     managed_records = [r for r in existing_records if r["name"].startswith(f"{CF_BASE_NAME}_")]
 
+    # 按国家分组
     country_groups = defaultdict(list)
     for e in proxy_data:
         country_groups[e["country"]].append(e["ip"])
