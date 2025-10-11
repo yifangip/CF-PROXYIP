@@ -9,9 +9,9 @@ jobs:
   filter_and_sync:
     runs-on: ubuntu-latest
 
-    # ✅ 在 job 层级设置环境变量，整个 job 所有步骤都能访问
     env:
-      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY || '5'}}
+      MAX_PER_COUNTRY: 3  # 默认每个国家最多保留条数
+      CF_BASE_NAME: proxyip  # Cloudflare DNS 记录前缀
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
       CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -23,8 +23,6 @@ jobs:
       # ---------------------------
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          persist-credentials: true
 
       # ---------------------------
       # 2️⃣ 设置 Python
@@ -43,22 +41,18 @@ jobs:
           pip install requests
 
       # ---------------------------
-      # 4️⃣ 运行 filter_443.py
+      # 4️⃣ 运行筛选脚本 filter_443.py
       # ---------------------------
       - name: Run filter_443.py
         run: python filter_443.py
 
       # ---------------------------
-      # 5️⃣ 提交过滤后的文件到仓库
+      # 5️⃣ 删除旧日志文件，只保留最新一份
       # ---------------------------
-      - name: Commit filtered file
+      - name: Cleanup old logs
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add proxyip_443_sorted.txt
-          git commit -m "更新过滤后的 443 个代理 [skip ci]" || echo "No changes to commit"
-          git remote set-url origin https://github.com/${{ github.repository }}.git
-          git push origin HEAD
+          ls PROXYIP_*.txt || echo "No logs to clean"
+          ls PROXYIP_*.txt | sort | head -n -1 | xargs -r rm -f
 
       # ---------------------------
       # 6️⃣ 运行 Cloudflare 同步脚本
@@ -67,13 +61,13 @@ jobs:
         run: python sync_proxy.py
 
       # ---------------------------
-      # 7️⃣ 提交 Cloudflare 日志文件到仓库
+      # 7️⃣ 提交最新日志文件
       # ---------------------------
-      - name: Commit Cloudflare logs
+      - name: Commit latest log
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PROXYIP_*.txt
-          git commit -m "更新 Cloudflare 同步日志 [skip ci]" || echo "No new logs to commit"
-          git remote set-url origin https://github.com/${{ github.repository }}.git
+          git commit -m "更新 Cloudflare 同步日志 [skip ci]" || echo "No changes to commit"
           git push origin HEAD
+
