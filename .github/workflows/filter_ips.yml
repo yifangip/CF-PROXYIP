@@ -2,7 +2,7 @@ name: Filter IPs and Commit
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天零点运行
+    - cron: '0 10 * * *'  # 每天10运行
   workflow_dispatch:       # 手动触发
 
 jobs:
