@@ -1,9 +1,13 @@
 import re
 import os
+import requests
 from collections import defaultdict
 
 # 从环境变量获取最大条数，默认3条
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))
+
+# 远程 IP 列表 URL
+IP_URL = "https://zip.cm.edu.kg/all.txt"
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
     lines = input_data.strip().split('\n')
@@ -33,12 +37,19 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
     return '\n'.join(result)
 
 if __name__ == "__main__":
-    # 测试用数据
-    input_data = """103.146.119.108:443#NL
-104.234.36.246:443#US
-123.234.56.78:443#US
-192.168.1.1:443#IN
-203.0.113.5:443#US"""
-    
-    output = filter_ips(input_data)
-    print(output)
+    output_file = "filtered_ips.txt"
+
+    try:
+        response = requests.get(IP_URL, timeout=10)
+        response.raise_for_status()
+        input_data = response.text
+    except Exception as e:
+        print(f"无法获取远程 IP 列表: {e}")
+        exit(1)
+
+    output_data = filter_ips(input_data)
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(output_data)
+
+    print(f"已生成 {output_file} 文件")
