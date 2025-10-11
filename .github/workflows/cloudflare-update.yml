@@ -2,7 +2,7 @@ name: Cloudflare DNS Update
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 00:00 执行，可按需修改
+    - cron: '0 0 * * *'  # 每天 UTC 00:00 执行
   workflow_dispatch:      # 支持手动触发
 
 jobs:
@@ -26,10 +26,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      # 4. 执行 Cloudflare 更新脚本并推送结果到 Telegram
+      # 4. 执行 Cloudflare 更新脚本
       - name: Run Cloudflare DNS Update
         env:
-          CF_TOKENS: ${{ secrets.CF_TOKENS }}  # Cloudflare API Token
+          CF_TOKENS: ${{ secrets.CF_TOKENS }}  # Cloudflare API Token（可多个逗号分隔）
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}  # Telegram Bot Token
           CHAT_ID: ${{ secrets.CHAT_ID }}      # Telegram Chat ID
         run: |
