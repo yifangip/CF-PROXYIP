@@ -39,3 +39,4 @@ jobs:
             git push
           else
             echo "没有文件变化，无需提交。"
+          fi
