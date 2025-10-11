@@ -46,17 +46,28 @@ def fetch_proxy_data():
     return data
 
 # ==============================
-# ☁️ Cloudflare DNS 操作
+# ☁️ Cloudflare DNS 操作（分页获取全部记录）
 # ==============================
-def get_dns_records():
-    url = f'https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records?type=A'
-    try:
-        resp = requests.get(url, headers=HEADERS)
-        resp.raise_for_status()
-        return resp.json().get('result', [])
-    except:
-        traceback.print_exc()
-        return []
+def get_all_dns_records():
+    records = []
+    page = 1
+    per_page = 100
+    while True:
+        url = f'https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records?type=A&page={page}&per_page={per_page}'
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            resp_json = resp.json()
+            result = resp_json.get('result', [])
+            if not result:
+                break
+            records.extend(result)
+            if len(result) < per_page:
+                break
+            page += 1
+        except:
+            break
+    return records
 
 def delete_records(records):
     count = 0
@@ -138,10 +149,10 @@ def main():
         send_tg_message("❌ TXT 文件为空或不存在，Cloudflare 同步失败")
         return
 
-    # 删除旧日志，保证本次只生成一份
+    # 删除旧日志
     cleanup_old_logs()
 
-    existing_records = get_dns_records()
+    existing_records = get_all_dns_records()
     managed_records = [r for r in existing_records if r["name"].startswith(f"{CF_BASE_NAME}_")]
 
     # 按国家分组
@@ -153,7 +164,9 @@ def main():
     for country, ips in country_groups.items():
         deleted, added = sync_country_records(country, ips, managed_records)
         summary.append(f"🌍 {country}: 删除 {deleted} 条，新增 {added} 条")
-        print(summary[-1])
+        summary.append("IPs:")
+        for ip in ips:
+            summary.append(f" - {ip}")
 
     # Telegram 汇总
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
