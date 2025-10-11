@@ -1,11 +1,10 @@
 name: Filter & Cloudflare ProxyIP 同步
 
-# 触发方式：手动 + 定时
 on:
   workflow_dispatch:  # 手动触发
   schedule:
-    - cron: "0 6 * * *"      # 每天上午 6 点执行一次
-    - cron: "0 */6 * * *"    # 每 6 小时执行一次
+    - cron: "0 6 * * *"      # 每天上午 6 点
+    - cron: "0 */6 * * *"    # 每 6 小时一次
 
 jobs:
   filter_and_sync:
@@ -21,7 +20,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          persist-credentials: true  # 允许 workflow 推送代码
+          persist-credentials: true  # 允许 workflow 提交回当前仓库
 
       # ---------------------------
       # 2️⃣ 设置 Python 环境
@@ -46,19 +45,18 @@ jobs:
         run: python filter_443.py
 
       # ---------------------------
-      # 5️⃣ 提交过滤后的文件
+      # 5️⃣ 提交过滤后的文件到当前仓库
       # ---------------------------
-      - name: Commit and push filtered file
+      - name: Commit filtered file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add proxyip_443_sorted.txt
-          git commit -m "Update filtered 443 proxies [skip ci]" || echo "No changes to commit"
+          git commit -m "更新过滤后的 443 个代理 [skip ci]" || echo "No changes to commit"
           git push origin HEAD
 
       # ---------------------------
-      # 6️⃣ 配置 Cloudflare 同步环境变量
+      # 6️⃣ 配置 Cloudflare 环境变量
       # ---------------------------
       - name: Set Cloudflare environment variables
         env:
@@ -73,3 +71,14 @@ jobs:
       # ---------------------------
       - name: Run Cloudflare Sync
         run: python sync_proxy.py
+
+      # ---------------------------
+      # 8️⃣ 提交 Cloudflare 日志文件到仓库
+      # ---------------------------
+      - name: Commit Cloudflare logs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PROXYIP_*.txt
+          git commit -m "更新 Cloudflare 同步日志 [skip ci]" || echo "No new logs to commit"
+          git push origin HEAD
