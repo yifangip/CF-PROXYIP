@@ -11,7 +11,7 @@ jobs:
 
     # ✅ 在 job 层级设置环境变量，整个 job 所有步骤都能访问
     env:
-      MAX_PER_COUNTRY: 10
+      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY || '5'}}
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
       CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
