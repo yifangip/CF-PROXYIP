@@ -3,7 +3,7 @@ import os
 import requests
 from collections import defaultdict
 
-# 从环境变量获取最大条数，默认3条
+# 每个国家最大条数，默认3条，可通过环境变量修改
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))
 
 # 远程 IP 列表 URL
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     output_file = "filtered_ips.txt"
 
     try:
-        response = requests.get(IP_URL, timeout=10)
+        response = requests.get(IP_URL, timeout=15)
         response.raise_for_status()
         input_data = response.text
     except Exception as e:
