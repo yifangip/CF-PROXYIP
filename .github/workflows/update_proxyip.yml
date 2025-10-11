@@ -1,0 +1,41 @@
+name: Update Proxy IP List
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"   # 每 6 小时执行一次
+
+jobs:
+  update-proxyip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 运行脚本
+        run: |
+          python3 your_script.py
+        env:
+          INPUT_URL: "https://zip.cm.edu.kg/all.txt"
+          OUTPUT_FILE: "proxyip_443_sorted.txt"
+          MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY }}
+
+      - name: 提交更新
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ${{ env.OUTPUT_FILE }}
+            git commit -m "🔄 更新 proxyip_443_sorted.txt ($(date '+%Y-%m-%d %H:%M:%S'))"
+            git push
+          else
+            echo "没有文件变化，无需提交。"
