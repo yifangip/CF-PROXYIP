@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      MAX_PER_COUNTRY: 5  # 可以修改每个国家最大条数
+      MAX_PER_COUNTRY: 2  # 可以修改每个国家最大条数
 
     steps:
     - name: Checkout repository
