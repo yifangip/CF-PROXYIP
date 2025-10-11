@@ -30,6 +30,7 @@ jobs:
 
       - name: 提交更新
         run: |
+          # 检查文件是否有变化
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
