@@ -38,7 +38,7 @@ def fetch_proxy_data():
                 continue
             try:
                 ip, country = line.split("#")
-                ip = ip.split(":")[0].strip()   # 只取 IP，忽略端口
+                ip = ip.split(":")[0].strip()   # 只取 IP
                 country = country.strip().upper()
                 data.append({"ip": ip, "country": country})
             except:
@@ -138,14 +138,16 @@ def sync_country_records(country, ips, managed_records):
     # 添加新记录
     created_ips = create_records(name, ips)
 
-    # GitHub Actions 控制台日志显示
+    # GitHub Actions 控制台日志显示每个 IP
     print(f"🌍 {country}: 删除 {len(deleted_ips)} 条，新增 {len(created_ips)} 条")
-    if created_ips:
-        for ip in created_ips:
-            print(f"  + {ip}")
     if deleted_ips:
+        print("  删除 IP:")
         for ip in deleted_ips:
-            print(f"  - {ip}")
+            print(f"   - {ip}")
+    if created_ips:
+        print("  新增 IP:")
+        for ip in created_ips:
+            print(f"   + {ip}")
 
     return created_ips  # 只给 Telegram 使用新增 IP
 
