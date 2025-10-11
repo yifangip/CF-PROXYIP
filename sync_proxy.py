@@ -6,7 +6,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # ==============================
-# 环境变量
+# 🔧 环境变量
 # ==============================
 REQUIRED_ENV_VARS = ["CF_API_TOKEN", "CF_ZONE_ID", "BOT_TOKEN", "CHAT_ID"]
 for v in REQUIRED_ENV_VARS:
@@ -141,13 +141,11 @@ def sync_country_records(country, ips, managed_records):
     # GitHub Actions 控制台日志显示每个 IP
     print(f"🌍 {country}: 删除 {len(deleted_ips)} 条，新增 {len(created_ips)} 条")
     if deleted_ips:
-        print("  删除 IP:")
         for ip in deleted_ips:
-            print(f"   - {ip}")
+            print(f"  - 删除 IP: {ip}")
     if created_ips:
-        print("  新增 IP:")
         for ip in created_ips:
-            print(f"   + {ip}")
+            print(f"  + 新增 IP: {ip}")
 
     return created_ips  # 只给 Telegram 使用新增 IP
 
