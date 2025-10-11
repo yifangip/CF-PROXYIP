@@ -1,0 +1,35 @@
+name: Cloudflare DNS Update
+
+on:
+  # 定时执行，可以根据需要调整
+  schedule:
+    - cron: '0 0 * * *'  # 每天 00:00 UTC 执行
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  update-dns:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 获取代码
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    
+    # 2. 设置 Python 环境
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    
+    # 3. 安装依赖
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+    
+    # 4. 执行脚本
+    - name: Run Cloudflare DNS update script
+      env:
+        CF_TOKENS: ${{ secrets.CF_TOKENS }}  # 从 Secrets 中获取 Cloudflare API Token
+      run: |
+        python cloudflare_update.py  # 假设你的脚本名为 cloudflare_update.py
