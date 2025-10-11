@@ -1,35 +1,54 @@
-name: Filter 443 Proxies
+name: Filter & Cloudflare ProxyIP 同步
 
+# 触发方式：手动 + 定时
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 手动触发
   schedule:
-   - cron: '0 6 * * *'  # 每天上午6点执行一次
+    - cron: "0 6 * * *"      # 每天上午 6 点执行一次
+    - cron: "0 */6 * * *"    # 每 6 小时执行一次
 
 jobs:
-  filter443:
+  filter_and_sync:
     runs-on: ubuntu-latest
 
     env:
       MAX_PER_COUNTRY: 10  # 每个国家最多保留条数，可手动修改
 
     steps:
+      # ---------------------------
+      # 1️⃣ 检出仓库
+      # ---------------------------
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true  # 允许 workflow 推送代码
 
+      # ---------------------------
+      # 2️⃣ 设置 Python 环境
+      # ---------------------------
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: "3.12"
 
+      # ---------------------------
+      # 3️⃣ 安装依赖
+      # ---------------------------
       - name: Install dependencies
-        run: pip install --upgrade pip requests
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
 
+      # ---------------------------
+      # 4️⃣ 运行 filter_443.py
+      # ---------------------------
       - name: Run filter_443.py
         run: python filter_443.py
 
-      - name: Commit and push generated file
+      # ---------------------------
+      # 5️⃣ 提交过滤后的文件
+      # ---------------------------
+      - name: Commit and push filtered file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -37,3 +56,20 @@ jobs:
           git add proxyip_443_sorted.txt
           git commit -m "Update filtered 443 proxies [skip ci]" || echo "No changes to commit"
           git push origin HEAD
+
+      # ---------------------------
+      # 6️⃣ 配置 Cloudflare 同步环境变量
+      # ---------------------------
+      - name: Set Cloudflare environment variables
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: echo "环境变量已加载"
+
+      # ---------------------------
+      # 7️⃣ 运行 Cloudflare 同步脚本
+      # ---------------------------
+      - name: Run Cloudflare Sync
+        run: python sync_proxy.py
