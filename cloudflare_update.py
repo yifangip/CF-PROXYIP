@@ -15,9 +15,10 @@ if not BOT_TOKEN or not CHAT_ID:
 
 IP_LIST_URL = "https://raw.githubusercontent.com/fangovo/ip-fandai/refs/heads/main/proxyip_443_sorted.txt"
 
+MAX_IPS_PER_SUBDOMAIN = 150  # 避免 Cloudflare 记录超限，每个子域名最多添加多少 IP
+
 # ------------------------- Telegram 推送 -------------------------
 def send_telegram_message(text: str) -> None:
-    """发送文本消息"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     params = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
     response = requests.get(url, params=params)
@@ -26,8 +27,12 @@ def send_telegram_message(text: str) -> None:
     else:
         print("Telegram 推送成功")
 
-def send_telegram_file(file_path: str, caption: str = "") -> None:
-    """发送文件到 Telegram"""
+def send_telegram_file(file_path: str, ip_counts: dict, total_ips: int) -> None:
+    """发送日志文件到 Telegram，文件提示在国家统计后显示"""
+    stats_text = f"🌍 总共获取 IP：{total_ips}\n*🌎 各国家 IP 数量统计:*\n" + \
+                 "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
+    caption = f"{stats_text}\n📄 日志文件已上传"
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     with open(file_path, "rb") as f:
         files = {"document": f}
@@ -91,6 +96,7 @@ def update_dns_record(api_token, zone_id, subdomain, domain, dns_type, operation
                 print(f"删除 {subdomain} {dns_type} 记录: {record['id']}")
 
     elif operation == "add" and ip_list:
+        ip_list = ip_list[:MAX_IPS_PER_SUBDOMAIN]  # 限制 IP 数量
         for ip in ip_list:
             payload = {"type": dns_type, "name": full_name, "content": ip, "ttl": 1, "proxied": False}
             resp = requests.post(f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
@@ -105,15 +111,13 @@ def main():
     try:
         configs, ip_counts, total_ips, log_entries = fetch_subdomain_configs(IP_LIST_URL)
 
-        # 日志文件
+        # 写日志文件
         log_file_name = f"proxyip_sync_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         with open(log_file_name, "w") as f:
             f.write("\n".join(log_entries))
 
-        # Telegram 推送汇总消息
-        summary_text = f"🌍 总共获取 IP：{total_ips}\n*🌎 各国家 IP 数量统计:*\n" + \
-                       "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
-        send_telegram_file(log_file_name, caption=summary_text)
+        # Telegram 上传日志文件并附带国家统计
+        send_telegram_file(log_file_name, ip_counts, total_ips)
 
         # DNS 更新
         for idx, token in enumerate(api_tokens, start=1):
