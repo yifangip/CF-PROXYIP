@@ -13,7 +13,7 @@ CHAT_ID = os.getenv("CHAT_ID", "").strip()
 if not BOT_TOKEN or not CHAT_ID:
     raise Exception("Telegram BOT_TOKEN 或 CHAT_ID 未设置")
 
-IP_LIST_URL = "https://raw.githubusercontent.com/fangovo/ip-fandai/refs/heads/main/filtered_ips.txt"
+IP_LIST_URL = "https://raw.githubusercontent.com/yifangip/CF-PROXYIP/refs/heads/main/filtered_ips.txt"
 
 MAX_IPS_PER_SUBDOMAIN = 150  # 避免 Cloudflare 记录超限，每个子域名最多添加多少 IP
 
