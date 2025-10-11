@@ -7,7 +7,7 @@ import requests
 # ---------------- 配置区 ----------------
 INPUT_URL = "https://zip.cm.edu.kg/all.txt"   # 远程文件 URL
 OUTPUT_FILE = "proxyip_443_sorted.txt"       # 输出文件路径
-MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 10))  # 每个国家最多保留条数，默认 10
+MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最多保留条数，默认 5
 # ---------------------------------------
 
 def main():
