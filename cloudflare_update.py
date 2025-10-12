@@ -64,11 +64,21 @@ def fetch_subdomain_configs(url: str):
         if not line.strip() or "#" not in line:
             continue
         ip_raw, country = line.strip().split("#", 1)
+        
+        # 只提取 IP 地址（去除端口和延迟信息）
         ip = ip_raw.split(":")[0].strip()
-        country = country.strip().lower()
+
+        # 确保正确提取国家信息
+        country = country.split('#')[0].strip().lower()
+
         if not ip or not country:
             continue
+
         subdomain = f"proxyip.{country}"
+        
+        # 清理子域名（去除不必要的字符，如 '#'）
+        subdomain = subdomain.replace("#", "").replace(" ", "")
+
         if subdomain not in configs:
             configs[subdomain] = {"v4": []}
         configs[subdomain]["v4"].append(ip)
