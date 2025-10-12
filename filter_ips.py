@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 3                                        # 每批次并发线程数（调低以防并发过多）
+MAX_THREADS = 5                                        # 每批次并发线程数
 
 # ------------------------- 缓存 & 锁 -------------------------
 verified_cache = {}
@@ -26,7 +26,7 @@ def check_proxy(ip_port, stop_flag):
 
     url = CHECK_API.format(ip_port)
     try:
-        resp = requests.get(url, timeout=10)  # 增加了超时时间
+        resp = requests.get(url, timeout=6)
         data = resp.json()
 
         valid = (
@@ -39,6 +39,7 @@ def check_proxy(ip_port, stop_flag):
 
         with lock:
             status = "✅ 有效" if valid else "❌ 无效"
+            # 只有在没有 stop 的情况下打印，避免在达到 quota 后继续输出
             if not stop_flag.is_set():
                 print(f"[{status}] {ip_port}  延迟: {delay}ms")
 
@@ -52,7 +53,8 @@ def check_proxy(ip_port, stop_flag):
 
 def validate_batch(ip_batch, stop_flag):
     """
-    对一小批 ip（原始行，如 '1.2.3.4:443#CC'）并发验证，返回本批次中按出现顺序的有效行（已附带延迟）。
+    对一小批 ip（原始行，如 '1.2.3.4:443#CC'）并发验证，
+    返回本批次中按出现顺序的有效行（已附带延迟）。
     不会返回超过 remaining_quota（外部控制）。
     """
     ip_ports = [line.split('#')[0] for line in ip_batch]
@@ -87,18 +89,24 @@ def validate_country(country, ip_lines, max_per_country):
     index = 0
     total = len(ip_lines)
 
+    # 分批提交，每批次大小为 MAX_THREADS（并发数）
     while len(valid_results) < max_per_country and index < total:
+        # 取下一批（按照原始顺序）
         batch = ip_lines[index:index + MAX_THREADS]
         valid_batch = validate_batch(batch, stop_flag)
 
+        # 按原始批次顺序把有效项加入结果，加入时检查上限
         for line in valid_batch:
             if len(valid_results) < max_per_country:
                 valid_results.append(line)
                 if len(valid_results) >= max_per_country:
-                    stop_flag.set()  # 达到目标数量后停止
+                    # 达到上限，置位 stop_flag 并跳出
+                    stop_flag.set()
                     break
+            else:
+                break
 
-        # 如果已经达到目标数量，就退出
+        # 如果已经达到上限，就不要再提交下一批
         if stop_flag.is_set():
             break
 
@@ -106,7 +114,6 @@ def validate_country(country, ip_lines, max_per_country):
 
     print(f"✅ {country} 有效 IP 数量: {len(valid_results)} / {max_per_country}")
     return valid_results
-
 
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
