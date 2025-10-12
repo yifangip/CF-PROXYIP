@@ -2,40 +2,108 @@ import re
 import os
 import requests
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 每个国家最大条数，默认3条，可通过环境变量修改
-MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))
+# ------------------------- 配置区 -------------------------
+MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))  # 每个国家最大条数
+IP_URL = "https://zip.cm.edu.kg/all.txt"               # 远程 IP 列表
+CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
+MAX_THREADS = 20                                      # 并发线程数
 
-# 远程 IP 列表 URL
-IP_URL = "https://zip.cm.edu.kg/all.txt"
+# ------------------------- 缓存 -------------------------
+verified_cache = {}  # {ip_port: True/False}
+
+
+# ------------------------- 函数定义 -------------------------
+def check_proxy(ip_port):
+    """验证代理是否有效，返回 True 表示有效，使用缓存加速"""
+    if ip_port in verified_cache:
+        return verified_cache[ip_port]
+
+    url = CHECK_API.format(ip_port)
+    try:
+        resp = requests.get(url, timeout=6)
+        data = resp.json()
+        valid = isinstance(data, dict) and data.get("proxyIP") != "-1"
+        verified_cache[ip_port] = valid
+        if valid:
+            print(f"[✅ 有效] {ip_port}")
+        else:
+            print(f"[❌ 无效] {ip_port}")
+        return valid
+    except Exception as e:
+        print(f"[⚠️ 验证失败] {ip_port} -> {e}")
+        verified_cache[ip_port] = False
+        return False
+
+
+def validate_ips_multithread(ip_list):
+    """多线程验证 IP 列表，返回有效 IP"""
+    valid_ips = []
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        futures = {executor.submit(check_proxy, ip): ip for ip in ip_list}
+        for future in as_completed(futures):
+            ip = futures[future]
+            try:
+                if future.result():
+                    valid_ips.append(ip)
+            except Exception as e:
+                print(f"[线程错误] {ip} -> {e}")
+    return valid_ips
+
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
+    """按国家筛选 IP，每个国家最多 max_per_country 条，有效性验证"""
     lines = input_data.strip().split('\n')
     country_map = defaultdict(list)
 
+    # 解析每行 IP 与国家
+    parsed_data = []
     for line in lines:
         line = line.strip()
-        if not line:
+        if not line or ':443#' not in line:
             continue
-
-        if ':443#' not in line:
-            continue
-
         match = re.search(r'#([A-Z]{2})$', line)
         if not match:
             continue
         country = match.group(1)
+        ip_port = line.split('#')[0]
+        parsed_data.append((country, ip_port, line))
 
-        if len(country_map[country]) < max_per_country:
-            country_map[country].append(line)
+    # 按国家分组
+    grouped = defaultdict(list)
+    for country, ip_port, line in parsed_data:
+        grouped[country].append((ip_port, line))
 
-    sorted_countries = sorted(country_map.keys())
     result = []
-    for country in sorted_countries:
-        result.extend(country_map[country])
+
+    # 对每个国家依次验证 IP
+    for country in sorted(grouped.keys()):
+        candidates = grouped[country]
+        print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
+        valid_lines = []
+
+        # 循环直到达到 max_per_country 或列表耗尽
+        for start in range(0, len(candidates), MAX_THREADS):
+            batch = candidates[start:start + MAX_THREADS]
+            ip_ports = [ip for ip, _ in batch]
+            valid_ips = validate_ips_multithread(ip_ports)
+
+            # 匹配原始行并添加到结果
+            for ip, line in batch:
+                if ip in valid_ips and len(valid_lines) < max_per_country:
+                    valid_lines.append(line)
+
+            if len(valid_lines) >= max_per_country:
+                break
+
+        result.extend(valid_lines)
+        print(f"✅ {country} 有效 IP 数量: {len(valid_lines)} / {max_per_country}")
 
     return '\n'.join(result)
 
+
+# ------------------------- 主执行逻辑 -------------------------
 if __name__ == "__main__":
     output_file = "filtered_ips.txt"
 
@@ -52,4 +120,4 @@ if __name__ == "__main__":
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(output_data)
 
-    print(f"已生成 {output_file} 文件")
+    print(f"\n✅ 已生成 {output_file} 文件，共 {len(output_data.splitlines())} 条有效代理。")
