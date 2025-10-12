@@ -9,9 +9,7 @@ jobs:
   filter_ips:
     runs-on: ubuntu-latest
     env:
-      MAX_PER_COUNTRY: 5
-      CF_TOKENS: ${{ secrets.CF_TOKENS }}
-
+      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY || '2' }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
