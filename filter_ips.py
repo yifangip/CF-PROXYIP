@@ -1,144 +1,159 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import re
 import os
-import time
 import requests
+import threading
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 配置
-MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))  # 每个国家最大条数
-IP_LIST_URL = "https://zip.cm.edu.kg/all.txt"
-LOCAL_IP_FILE = "all.txt"  # 下载后的本地文件
-OUTPUT_FILE = "filtered_ips_with_latency.txt"
-CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 请确认该 API 可用
+# ------------------------- 配置区 -------------------------
+MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
+IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
+CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
+MAX_THREADS = 5                                        # 每批次并发线程数
 
-# 检查并下载远程 IP 列表到本地
-def download_ip_list(url=IP_LIST_URL, dest=LOCAL_IP_FILE, timeout=20):
-    print(f"下载远程 IP 列表：{url} -> {dest}")
+# ------------------------- 缓存 & 锁 -------------------------
+verified_cache = {}
+lock = threading.Lock()  # 用于多线程安全输出和列表操作
+
+def check_proxy(ip_port, stop_flag):
+    """验证代理是否有效，并返回 (是否有效, 延迟ms)。如果 stop_flag 被设置则尽快返回。"""
+    # 尽早退出以减少无谓请求
+    if stop_flag.is_set():
+        return False, -1
+
+    if ip_port in verified_cache:
+        return verified_cache[ip_port]
+
+    url = CHECK_API.format(ip_port)
     try:
-        r = requests.get(url, timeout=timeout)
-        r.raise_for_status()
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write(r.text)
-        print(f"下载完成，已保存到 {dest}，文件大小 {len(r.text)} 字节")
-        return True
+        resp = requests.get(url, timeout=6)
+        data = resp.json()
+
+        valid = (
+            isinstance(data, dict)
+            and data.get("success") is True
+            and str(data.get("proxyIP")) != "-1"
+        )
+        delay = data.get("responseTime", -1)
+        verified_cache[ip_port] = (valid, delay)
+
+        with lock:
+            status = "✅ 有效" if valid else "❌ 无效"
+            # 只有在没有 stop 的情况下打印，避免在达到 quota 后继续输出
+            if not stop_flag.is_set():
+                print(f"[{status}] {ip_port}  延迟: {delay}ms")
+
+        return valid, delay
     except Exception as e:
-        print(f"下载失败: {e}")
-        return False
+        with lock:
+            print(f"[⚠️ 验证失败] {ip_port} -> {e}")
+        verified_cache[ip_port] = (False, -1)
+        return False, -1
 
-# 使用 API 检测单个 ip:port 的延迟，带重试与指数退避
-def check_ip_latency(ip_port, retries=3, initial_delay=1, timeout=10):
-    delay = initial_delay
-    for attempt in range(1, retries + 1):
-        try:
-            url = CHECK_API.format(ip_port)
-            resp = requests.get(url, timeout=timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("success") and "responseTime" in data:
-                return int(data["responseTime"])
+
+def validate_batch(ip_batch, stop_flag):
+    """
+    对一小批 ip（原始行，如 '1.2.3.4:443#CC'）并发验证，
+    返回本批次中按出现顺序的有效行（已附带延迟）。
+    不会返回超过 remaining_quota（外部控制）。
+    """
+    ip_ports = [line.split('#')[0] for line in ip_batch]
+    valid_lines = []
+    with ThreadPoolExecutor(max_workers=min(MAX_THREADS, len(ip_ports))) as executor:
+        futures = {executor.submit(check_proxy, ip, stop_flag): ip for ip in ip_ports}
+        for future in as_completed(futures):
+            ip = futures[future]
+            try:
+                valid, delay = future.result()
+                if valid:
+                    # 找到对应的原始行（保持原始顺序以便后面截取）
+                    for line in ip_batch:
+                        if line.startswith(ip):
+                            valid_lines.append(f"{line}  # 延迟:{delay}ms")
+                            break
+                # 如果 stop_flag 已经被设定，则我们可以尽早返回
+                if stop_flag.is_set():
+                    break
+            except Exception as e:
+                with lock:
+                    print(f"[线程错误] {ip} -> {e}")
+    return valid_lines
+
+
+def validate_country(country, ip_lines, max_per_country):
+    """逐批次验证某个国家的 IP，严格控制最多 max_per_country 条有效 IP"""
+    print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
+
+    valid_results = []
+    stop_flag = threading.Event()
+    index = 0
+    total = len(ip_lines)
+
+    # 分批提交，每批次大小为 MAX_THREADS（并发数）
+    while len(valid_results) < max_per_country and index < total:
+        # 取下一批（按照原始顺序）
+        batch = ip_lines[index:index + MAX_THREADS]
+        valid_batch = validate_batch(batch, stop_flag)
+
+        # 按原始批次顺序把有效项加入结果，加入时检查上限
+        for line in valid_batch:
+            if len(valid_results) < max_per_country:
+                valid_results.append(line)
+                if len(valid_results) >= max_per_country:
+                    # 达到上限，置位 stop_flag 并跳出
+                    stop_flag.set()
+                    break
             else:
-                # API 返回不成功，也视为该 IP 无效
-                return None
-        except requests.exceptions.RequestException as e:
-            # 打印错误并在重试前等待（指数退避）
-            print(f"检测 {ip_port} 失败 (尝试 {attempt}/{retries})，错误: {e}")
-            if attempt < retries:
-                time.sleep(delay)
-                delay *= 2
-            else:
-                return None
-        except ValueError:
-            # JSON decode 错误
-            print(f"检测 {ip_port} 返回非 JSON 内容，略过")
-            return None
+                break
 
-# 读取本地文件并逐行处理；只保留格式正确且检测成功的 IP
-def filter_and_check(local_file=LOCAL_IP_FILE, max_per_country=MAX_PER_COUNTRY):
-    if not os.path.exists(local_file):
-        raise FileNotFoundError(f"{local_file} 不存在，请先下载或指定正确路径")
+        # 如果已经达到上限，就不要再提交下一批
+        if stop_flag.is_set():
+            break
 
-    country_count = defaultdict(int)
-    results = []
+        index += MAX_THREADS
 
-    with open(local_file, "r", encoding="utf-8", errors="ignore") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
+    print(f"✅ {country} 有效 IP 数量: {len(valid_results)} / {max_per_country}")
+    return valid_results
 
-            # 跳过含有星号掩码或明显不完整的行
-            if "***" in line or "..." in line:
-                # 如果你想记录被跳过的行可以在此处打印或写入日志
-                # print(f"跳过被掩码或不完整的行: {line}")
-                continue
 
-            # 只处理 :443#XX 这类格式
-            if ':443#' not in line:
-                continue
+def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
+    """主流程：按国家分组并逐国家验证"""
+    lines = input_data.strip().split('\n')
+    country_map = defaultdict(list)
 
-            # 提取国家码（行尾两个大写字母）
-            m = re.search(r'#([A-Z]{2})$', line)
-            if not m:
-                continue
-            country = m.group(1)
+    for line in lines:
+        line = line.strip()
+        if not line or ':443#' not in line:
+            continue
+        match = re.search(r'#([A-Z]{2})$', line)
+        if match:
+            country = match.group(1)
+            country_map[country].append(line)
 
-            # 如果该国家已经达到了上限，直接跳过该行
-            if country_count[country] >= max_per_country:
-                continue
+    result = []
+    for country in sorted(country_map.keys()):
+        valid = validate_country(country, country_map[country], max_per_country)
+        result.extend(valid)
 
-            # 获取 ip:port（仅取前两个冒号分割部分，以防额外字段）
-            parts = line.split(':')
-            if len(parts) < 2:
-                continue
-            ip = parts[0]
-            port_and_rest = parts[1]
-            # port 可能包含 #，所以取 split('#')[0]
-            port = port_and_rest.split('#')[0]
-            ip_port = f"{ip}:{port}"
+    return '\n'.join(result)
 
-            # 调用检测 API（只有检测成功才记录）
-            latency = check_ip_latency(ip_port)
-            if latency is None:
-                # 检测失败（无延迟或 API 不成功），跳过该 IP
-                continue
-
-            # 记录并计数
-            formatted = f"{ip_port}#{country}#延迟:{latency}ms"
-            results.append(formatted)
-            country_count[country] += 1
-
-            print(f"通过: {formatted} （国家 {country} 已有 {country_count[country]}/{max_per_country}）")
-
-            # 若所有国家都已达到上限，可提前停止 —— 但我们没有事先知道有哪些国家在列表中
-            # 因此继续遍历文件，直到文件结束或每个国家都尽可能达到上限
-
-    return results
-
-def main():
-    # 1. 下载远程列表到本地（如果已经有本地文件也可以跳过这一步）
-    if not os.path.exists(LOCAL_IP_FILE):
-        ok = download_ip_list()
-        if not ok:
-            print("无法下载远程 IP 列表，退出")
-            return
-
-    # 2. 处理并检测
-    try:
-        results = filter_and_check()
-    except Exception as e:
-        print(f"处理出错: {e}")
-        return
-
-    # 3. 写入输出文件
-    if results:
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as out:
-            out.write("\n".join(results))
-        print(f"已生成 {OUTPUT_FILE}，共 {len(results)} 条")
-    else:
-        print("没有检测到有效 IP，未生成输出文件。")
 
 if __name__ == "__main__":
-    main()
+    output_file = "filtered_ips.txt"
+
+    try:
+        response = requests.get(IP_URL, timeout=15)
+        response.raise_for_status()
+        input_data = response.text
+    except Exception as e:
+        print(f"无法获取远程 IP 列表: {e}")
+        exit(1)
+
+    output_data = filter_ips(input_data)
+
+    if output_data.strip():
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(output_data)
+        print(f"\n✅ 已生成 {output_file} 文件，共 {len(output_data.splitlines())} 条有效代理。")
+    else:
+        print("\n⚠️ 没有找到任何有效代理 IP。")
