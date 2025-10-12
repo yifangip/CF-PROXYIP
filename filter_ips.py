@@ -93,10 +93,12 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
         valid_lines = []
         index = 0
 
+        # 限制每个国家的有效 IP 数量
         while len(valid_lines) < max_per_country and index < len(candidates):
             batch = candidates[index:index + max_per_country]
             valid_batch = validate_batch(batch, max_per_country)
 
+            # 按顺序添加到有效列表，严格控制数量
             for line in valid_batch:
                 if len(valid_lines) < max_per_country:
                     valid_lines.append(line)
