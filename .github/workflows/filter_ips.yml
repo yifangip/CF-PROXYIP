@@ -1,47 +1,43 @@
-name: IP Filtering and Commit
+name: Filter and Validate IPs
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 每天 UTC 10:00 执行（UTC 时间，需根据需要调整）
-  workflow_dispatch:       # 手动触发
+    - cron: '0 10 * * *'  # 每天 10:00 运行
+  workflow_dispatch:
 
 jobs:
-  filter_ips_and_commit:
+  filter_ips:
     runs-on: ubuntu-latest
     env:
-      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY }}  # 你可以在 GitHub Secrets 里设置 MAX_PER_COUNTRY
-      IP_URL: "https://zip.cm.edu.kg/all.txt"          # 远程 IP 列表 URL
+      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY }}
 
     steps:
-    # 1. 拉取仓库代码
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        persist-credentials: true  # 保留 GITHUB_TOKEN 用于提交
+        persist-credentials: true
 
-    # 2. 设置 Python 环境
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.8'
 
-    # 3. 安装依赖
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install requests
 
-    # 4. 运行 filter_ips.py 脚本并获取代理 IP
-    - name: Run filter_ips.py script
+    - name: Run IP filter and validation
       run: |
+        echo "开始执行 IP 过滤与延迟检测..."
         python filter_ips.py
-        # 只在日志中显示简洁的完成信息，避免输出敏感数据
-        echo "IP Filtering complete. Check the generated 'filtered_ips.txt' for the result."
+        echo "------------ 结果预览 ------------"
+        head -n 50 filtered_ips.txt || true
+        echo "---------------------------------"
 
-    # 5. 提交并推送更改（使用 UTC+8 时间）
     - name: Commit and push changes
       run: |
-        DATE=$(TZ="Asia/Singapore" date +"%Y-%m-%d %H:%M:%S")  # 设置为 UTC+8 时间
+        DATE=$(TZ="Asia/Singapore" date +"%Y-%m-%d %H:%M:%S")
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add filtered_ips.txt
