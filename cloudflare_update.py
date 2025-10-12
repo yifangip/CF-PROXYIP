@@ -42,7 +42,7 @@ def send_telegram_file(file_path: str, ip_counts: dict, total_ips: int) -> None:
             print(f"Telegram 文件上传失败: {response.status_code} {response.text}")
         else:
             print("Telegram 文件上传成功")
-
+            
 # ------------------------- Cloudflare 函数 -------------------------
 def fetch_zone_info(api_token: str) -> tuple:
     headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
@@ -68,27 +68,37 @@ def fetch_subdomain_configs(url: str):
         # 提取 IP 地址和延迟信息
         ip_info = ip_raw.split(":")
         ip = ip_info[0].strip()
-        latency = ip_info[1].split("ms")[0].strip() if len(ip_info) > 1 else "未知"  # 提取延迟信息
+        
+        # 提取延迟信息，格式为 "延迟:394ms"
+        latency = ""
+        if "延迟" in country:
+            latency = country.split("延迟")[1].strip()
+            country = country.split('#')[0].strip()  # 提取国家信息
 
-        # 提取国家信息
+        # 如果没有延迟信息，则默认为未知
+        if not latency:
+            latency = "未知"
+
+        # 提取国家信息并确保小写
         country = country.split('#')[0].strip().lower()
 
         if not ip or not country:
             continue
 
-        subdomain = f"proxyip.{country}"
+        # Cloudflare 记录格式保持原有：proxyip.国家
+        cf_subdomain = f"proxyip.{country}"  # 保持原格式：proxyip.国家
         
-        # 清理子域名（去除不必要的字符，如 '#'）
-        subdomain = subdomain.replace("#", "").replace(" ", "")
+        # Telegram 推送使用 proxyip.国家.yifang.filegear-sg.me 格式
+        tg_subdomain = f"proxyip.{country}.yifang.filegear-sg.me"
 
-        if subdomain not in configs:
-            configs[subdomain] = {"v4": []}
-        configs[subdomain]["v4"].append(ip)
+        if cf_subdomain not in configs:
+            configs[cf_subdomain] = {"v4": []}
+        configs[cf_subdomain]["v4"].append(ip)
         ip_counts[country] = ip_counts.get(country, 0) + 1
         total_ips += 1
         
-        # 添加延迟信息到日志
-        log_entries.append(f"{subdomain} → {ip} → 延迟:{latency}ms")
+        # 添加延迟信息到日志（使用 Telegram 推送格式）
+        log_entries.append(f"{tg_subdomain} → {ip} → 延迟:{latency}")
 
     return configs, ip_counts, total_ips, log_entries
 
