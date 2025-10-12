@@ -2,7 +2,7 @@ name: Cloudflare DNS Update
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # 每天北京时间早上8点运行（UTC 4:00+8）
+    - cron: '0 4 * * *'  # 每天北京时间早上12点运行（UTC 4:00+8）
   workflow_dispatch:      # 支持手动触发
 
 jobs:
