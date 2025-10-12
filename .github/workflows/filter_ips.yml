@@ -35,7 +35,7 @@ jobs:
     - name: Run filter_ips.py script
       run: |
         python filter_ips.py
-        # 这里只打印生成的文件内容到日志，避免泄露敏感信息
+        # 只在日志中显示简洁的完成信息，避免输出敏感数据
         echo "IP Filtering complete. Check the generated 'filtered_ips.txt' for the result."
 
     # 5. 提交并推送更改（使用 UTC+8 时间）
