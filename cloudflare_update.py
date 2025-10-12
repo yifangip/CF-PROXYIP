@@ -68,7 +68,7 @@ def fetch_subdomain_configs(url: str):
         country = country.strip().lower()
         if not ip or not country:
             continue
-        subdomain = f"proxyip_{country}"
+        subdomain = f"proxyip.{country}"
         if subdomain not in configs:
             configs[subdomain] = {"v4": []}
         configs[subdomain]["v4"].append(ip)
