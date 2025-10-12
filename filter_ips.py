@@ -60,7 +60,7 @@ def validate_batch(ip_lines, max_workers):
                     # 找到对应的原始行
                     for line in ip_lines:
                         if line.startswith(ip):
-                            valid_ips.append(f"{line}  # 延迟: {response_time}ms")
+                            valid_ips.append(f"{line}#延迟:{response_time}ms")
                             break
             except Exception as e:
                 print(f"[线程错误] {ip} -> {e}")
