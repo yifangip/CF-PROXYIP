@@ -83,41 +83,32 @@ def validate_batch(ip_batch, stop_flag):
                     print(f"[线程错误] {ip} -> {e}")
     return valid_lines
 
-
 def validate_country(country, ip_lines, max_per_country):
-    """逐批次验证某个国家的 IP，严格控制最多 max_per_country 条有效 IP"""
+    """验证某个国家的 IP，严格限制数量"""
     print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
 
-    valid_results = []
-    stop_flag = threading.Event()
-    index = 0
-    total = len(ip_lines)
+    valid_ips = []
+    stop_flag = threading.Event()  # 当找到足够的IP后触发
 
-    # 分批提交，每批次大小为 MAX_THREADS（并发数）
-    while len(valid_results) < max_per_country and index < total:
-        # 取下一批（按照原始顺序）
-        batch = ip_lines[index:index + MAX_THREADS]
-        valid_batch = validate_batch(batch, stop_flag)
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        futures = {executor.submit(check_proxy, ip.split('#')[0], stop_flag): ip for ip in ip_lines}
 
-        # 按原始批次顺序把有效项加入结果，加入时检查上限
-        for line in valid_batch:
-            if len(valid_results) < max_per_country:
-                valid_results.append(line)
-                if len(valid_results) >= max_per_country:
-                    # 达到上限，置位 stop_flag 并跳出
-                    stop_flag.set()
-                    break
-            else:
-                break
+        for future in as_completed(futures):
+            ip = futures[future]
+            try:
+                valid, delay = future.result()
+                if valid:
+                    with lock:
+                        if len(valid_ips) < max_per_country:
+                            valid_ips.append(f"{ip}#延迟:{delay}ms")
+                            if len(valid_ips) >= max_per_country:
+                                stop_flag.set()  # 达到目标后通知其他线程停止
+                                print(f"✅ {country} 达到目标数量，停止进一步验证")
+            except Exception as e:
+                print(f"[线程错误] {ip} -> {e}")
 
-        # 如果已经达到上限，就不要再提交下一批
-        if stop_flag.is_set():
-            break
-
-        index += MAX_THREADS
-
-    print(f"✅ {country} 有效 IP 数量: {len(valid_results)} / {max_per_country}")
-    return valid_results
+    print(f"✅ {country} 有效 IP 数量: {len(valid_ips)} / {max_per_country}")
+    return valid_ips
 
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
