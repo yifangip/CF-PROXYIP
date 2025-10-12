@@ -65,10 +65,12 @@ def fetch_subdomain_configs(url: str):
             continue
         ip_raw, country = line.strip().split("#", 1)
         
-        # 只提取 IP 地址（去除端口和延迟信息）
-        ip = ip_raw.split(":")[0].strip()
+        # 提取 IP 地址和延迟信息
+        ip_info = ip_raw.split(":")
+        ip = ip_info[0].strip()
+        latency = ip_info[1].split("ms")[0].strip() if len(ip_info) > 1 else "未知"  # 提取延迟信息
 
-        # 确保正确提取国家信息
+        # 提取国家信息
         country = country.split('#')[0].strip().lower()
 
         if not ip or not country:
@@ -84,9 +86,12 @@ def fetch_subdomain_configs(url: str):
         configs[subdomain]["v4"].append(ip)
         ip_counts[country] = ip_counts.get(country, 0) + 1
         total_ips += 1
-        log_entries.append(f"{subdomain} → {ip}")
+        
+        # 添加延迟信息到日志
+        log_entries.append(f"{subdomain} → {ip} → 延迟:{latency}ms")
 
     return configs, ip_counts, total_ips, log_entries
+
 
 def update_dns_record(api_token, zone_id, subdomain, domain, dns_type, operation, ip_list=None):
     headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
