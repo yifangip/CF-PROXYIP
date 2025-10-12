@@ -5,10 +5,10 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ------------------------- 配置区 -------------------------
-MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 3))  # 每个国家最大条数
+MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"               # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 20                                      # 并发线程数
+MAX_THREADS = 10                                      # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}  # {ip_port: True/False}
@@ -37,27 +37,33 @@ def check_proxy(ip_port):
         return False
 
 
-def validate_ips_multithread(ip_list):
-    """多线程验证 IP 列表，返回有效 IP"""
+def validate_batch(ip_lines):
+    """多线程验证批次 IP，返回有效 IP 列表"""
+    ip_ports = [ip.split('#')[0] for ip in ip_lines]
     valid_ips = []
+
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = {executor.submit(check_proxy, ip): ip for ip in ip_list}
+        futures = {executor.submit(check_proxy, ip): ip for ip in ip_ports}
         for future in as_completed(futures):
             ip = futures[future]
             try:
                 if future.result():
-                    valid_ips.append(ip)
+                    # 匹配原始行
+                    for line in ip_lines:
+                        if line.startswith(ip):
+                            valid_ips.append(line)
+                            break
             except Exception as e:
                 print(f"[线程错误] {ip} -> {e}")
     return valid_ips
 
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
-    """按国家筛选 IP，每个国家最多 max_per_country 条，有效性验证"""
+    """按国家筛选 IP，每个国家严格 max_per_country 条有效 IP"""
     lines = input_data.strip().split('\n')
 
-    # 解析每行 IP 与国家
-    parsed_data = []
+    # 按国家分组
+    country_map = defaultdict(list)
     for line in lines:
         line = line.strip()
         if not line or ':443#' not in line:
@@ -66,38 +72,28 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
         if not match:
             continue
         country = match.group(1)
-        ip_port = line.split('#')[0]
-        parsed_data.append((country, ip_port, line))
-
-    # 按国家分组
-    grouped = defaultdict(list)
-    for country, ip_port, line in parsed_data:
-        grouped[country].append((ip_port, line))
+        country_map[country].append(line)
 
     result = []
 
-    # 对每个国家依次验证 IP
-    for country in sorted(grouped.keys()):
-        candidates = grouped[country]
+    # 逐个国家处理
+    for country in sorted(country_map.keys()):
+        candidates = country_map[country]
         print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
         valid_lines = []
-
         index = 0
+
         while len(valid_lines) < max_per_country and index < len(candidates):
+            # 取批次进行多线程验证
             batch = candidates[index:index + MAX_THREADS]
-            ip_ports = [ip for ip, _ in batch]
-            valid_ips = validate_ips_multithread(ip_ports)
+            valid_batch = validate_batch(batch)
 
-            # 严格限制数量
-            for ip, line in batch:
-                if ip in valid_ips:
-                    if len(valid_lines) < max_per_country:
-                        valid_lines.append(line)
-                    else:
-                        break  # 达到上限立即停止
-
-            if len(valid_lines) >= max_per_country:
-                break  # 当前国家已满，停止处理
+            # 按顺序添加到有效列表，严格控制数量
+            for line in valid_batch:
+                if len(valid_lines) < max_per_country:
+                    valid_lines.append(line)
+                else:
+                    break
 
             index += MAX_THREADS
 
