@@ -94,7 +94,11 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
                     if len(valid_lines) < max_per_country:
                         valid_lines.append(line)
                     else:
-                        break  # 达到上限
+                        break  # 达到上限立即停止
+
+            if len(valid_lines) >= max_per_country:
+                break  # 当前国家已满，停止处理
+
             index += MAX_THREADS
 
         result.extend(valid_lines)
