@@ -38,5 +38,6 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add filtered_ips.txt
-        git commit -m "Update filtered_ips.txt [skip ci]" || echo "No changes to commit"
+        git commit -m "Update filtered_ips.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+
         git push
