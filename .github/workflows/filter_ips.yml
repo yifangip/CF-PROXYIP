@@ -1,22 +1,22 @@
-name: Filter IPs and Commit
+name: Filter and Validate IPs
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 每天10运行
-  workflow_dispatch:       # 手动触发
+    - cron: '0 10 * * *'  # 每天 10:00 运行
+  workflow_dispatch:
 
 jobs:
   filter_ips:
     runs-on: ubuntu-latest
-
     env:
-      MAX_PER_COUNTRY: ${{ secrets.MAX_PER_COUNTRY || '2' }}  # 使用环境变量或默认值2
+      MAX_PER_COUNTRY: 5
+      CF_TOKENS: ${{ secrets.CF_TOKENS }}
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        persist-credentials: true  # 保留 GITHUB_TOKEN 用于提交
+        persist-credentials: true
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -28,16 +28,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests
 
-    - name: Run filter_ips.py script
+    - name: Run IP filter and validation
       run: |
+        echo "开始执行 IP 过滤与延迟检测..."
         python filter_ips.py
-        cat filtered_ips.txt  # 输出到 Actions 日志
+        echo "------------ 结果预览 ------------"
+        head -n 50 filtered_ips.txt || true
+        echo "---------------------------------"
 
     - name: Commit and push changes
       run: |
+        DATE=$(TZ="Asia/Singapore" date +"%Y-%m-%d %H:%M:%S")
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add filtered_ips.txt
-        git commit -m "Update filtered_ips.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
-
+        git commit -m "Update filtered_ips.txt - ${DATE}" || echo "No changes to commit"
         git push
