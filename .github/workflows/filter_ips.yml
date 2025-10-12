@@ -2,7 +2,7 @@ name: Filter and Validate IPs
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 每天 10:00 运行
+    - cron: '0 3 * * *'  # 每天北京时间早上11点运行（UTC 4:00+8）
   workflow_dispatch:
 
 jobs:
