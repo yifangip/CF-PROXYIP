@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
+MAX_THREADS = MAX_PER_COUNTRY  # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}  # {ip_port: (valid, responseTime)}
@@ -60,7 +61,7 @@ def validate_batch(ip_lines, max_workers):
                     # 找到对应的原始行
                     for line in ip_lines:
                         if line.startswith(ip):
-                            valid_ips.append(f"{line}#延迟:{response_time}ms")
+                            valid_ips.append(f"{line}  # 延迟: {response_time}ms")
                             break
             except Exception as e:
                 print(f"[线程错误] {ip} -> {e}")
@@ -95,8 +96,8 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
 
         # 限制每个国家的有效 IP 数量
         while len(valid_lines) < max_per_country and index < len(candidates):
-            batch = candidates[index:index + max_per_country]
-            valid_batch = validate_batch(batch, max_per_country)
+            batch = candidates[index:index + MAX_THREADS]
+            valid_batch = validate_batch(batch, MAX_THREADS)
 
             # 按顺序添加到有效列表，严格控制数量
             for line in valid_batch:
@@ -105,7 +106,7 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
                 else:
                     break
 
-            index += max_per_country
+            index += MAX_THREADS
 
         print(f"✅ {country} 有效 IP 数量: {len(valid_lines)} / {max_per_country}")
         result.extend(valid_lines)
