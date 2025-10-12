@@ -87,24 +87,18 @@ def validate_country(country, ip_lines, max_per_country):
     index = 0
     total = len(ip_lines)
 
-    # 分批提交，每批次大小为 MAX_THREADS（并发数）
     while len(valid_results) < max_per_country and index < total:
-        # 取下一批（按照原始顺序）
         batch = ip_lines[index:index + MAX_THREADS]
         valid_batch = validate_batch(batch, stop_flag)
 
-        # 按原始批次顺序把有效项加入结果，加入时检查上限
         for line in valid_batch:
             if len(valid_results) < max_per_country:
                 valid_results.append(line)
                 if len(valid_results) >= max_per_country:
-                    # 达到上限，置位 stop_flag 并跳出
-                    stop_flag.set()
+                    stop_flag.set()  # 达到目标数量后停止
                     break
-            else:
-                break
 
-        # 如果已经达到上限，就不要再提交下一批
+        # 如果已经达到目标数量，就退出
         if stop_flag.is_set():
             break
 
@@ -112,6 +106,7 @@ def validate_country(country, ip_lines, max_per_country):
 
     print(f"✅ {country} 有效 IP 数量: {len(valid_results)} / {max_per_country}")
     return valid_results
+
 
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
