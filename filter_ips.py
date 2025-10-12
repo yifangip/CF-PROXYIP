@@ -55,7 +55,6 @@ def validate_ips_multithread(ip_list):
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
     """按国家筛选 IP，每个国家最多 max_per_country 条，有效性验证"""
     lines = input_data.strip().split('\n')
-    country_map = defaultdict(list)
 
     # 解析每行 IP 与国家
     parsed_data = []
@@ -83,9 +82,9 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
         print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
         valid_lines = []
 
-        # 循环直到达到 max_per_country 或列表耗尽
-        for start in range(0, len(candidates), MAX_THREADS):
-            batch = candidates[start:start + MAX_THREADS]
+        index = 0
+        while len(valid_lines) < max_per_country and index < len(candidates):
+            batch = candidates[index:index + MAX_THREADS]
             ip_ports = [ip for ip, _ in batch]
             valid_ips = validate_ips_multithread(ip_ports)
 
@@ -95,10 +94,8 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
                     if len(valid_lines) < max_per_country:
                         valid_lines.append(line)
                     else:
-                        break  # 已达到上限，停止添加
-
-            if len(valid_lines) >= max_per_country:
-                break
+                        break  # 达到上限
+            index += MAX_THREADS
 
         result.extend(valid_lines)
         print(f"✅ {country} 有效 IP 数量: {len(valid_lines)} / {max_per_country}")
