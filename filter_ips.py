@@ -9,16 +9,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 3                                        # 每批次并发线程数
+MAX_THREADS = 5                                        # 每批次并发线程数
 
 # ------------------------- 缓存 & 锁 -------------------------
 verified_cache = {}
 lock = threading.Lock()  # 用于多线程安全输出和列表操作
 
 def check_proxy(ip_port, stop_flag):
-    """验证代理是否有效，并返回 (是否有效, 延迟ms)。如果 stop_flag 被设置则尽快返回。"""
-    # 尽早退出以减少无谓请求
-    if stop_flag.is_set():
+    """验证代理是否有效，并返回 (是否有效, 延迟ms)"""
+    if stop_flag.is_set():  # 如果其他线程已找到足够数量，立即退出
         return False, -1
 
     if ip_port in verified_cache:
@@ -35,13 +34,17 @@ def check_proxy(ip_port, stop_flag):
             and str(data.get("proxyIP")) != "-1"
         )
         delay = data.get("responseTime", -1)
+
         verified_cache[ip_port] = (valid, delay)
 
+        # 打印时加锁，防止输出交错
         with lock:
-            status = "✅ 有效" if valid else "❌ 无效"
-            # 只有在没有 stop 的情况下打印，避免在达到 quota 后继续输出
             if not stop_flag.is_set():
-                print(f"[{status}] {ip_port}  延迟: {delay}ms")
+                status = "✅ 有效" if valid else "❌ 无效"
+                
+                # 输出到日志文件而非控制台
+                with open('proxy_check_log.txt', 'a') as log_file:
+                    log_file.write(f"[{status}] {ip_port}  延迟: {delay}ms\n")
 
         return valid, delay
     except Exception as e:
@@ -49,6 +52,7 @@ def check_proxy(ip_port, stop_flag):
             print(f"[⚠️ 验证失败] {ip_port} -> {e}")
         verified_cache[ip_port] = (False, -1)
         return False, -1
+
 
 
 def validate_batch(ip_batch, stop_flag):
@@ -69,7 +73,7 @@ def validate_batch(ip_batch, stop_flag):
                     # 找到对应的原始行（保持原始顺序以便后面截取）
                     for line in ip_batch:
                         if line.startswith(ip):
-                            valid_lines.append(f"{line}  # 延迟:{delay}ms")
+                            valid_lines.append(f"{line}#延迟:{delay}ms")
                             break
                 # 如果 stop_flag 已经被设定，则我们可以尽早返回
                 if stop_flag.is_set():
