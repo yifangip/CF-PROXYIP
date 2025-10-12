@@ -49,10 +49,12 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
 
         # 检查 IP 延迟
         latency, colo = check_ip_latency(ip_port)
+        
+        # 如果没有有效延迟，跳过此 IP
         if latency is None:
             continue
 
-        # 如果延迟有效，加入列表
+        # 如果延迟有效并且该国家的 IP 还没有达到最大数量，加入该国家的 IP 列表
         if len(country_map[country]) < max_per_country:
             line_with_latency = f"{line.split(':')[0]}:{line.split(':')[1]}#{country}#延迟:{latency}ms"
             country_map[country].append(line_with_latency)
