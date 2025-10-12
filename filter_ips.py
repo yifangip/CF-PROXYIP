@@ -8,14 +8,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = MAX_PER_COUNTRY  # 每批次线程数
+MAX_THREADS = 10  # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}  # {ip_port: (valid, responseTime)}
 
-# ------------------------- 验证函数 -------------------------
+
 def check_proxy(ip_port):
-    """验证代理是否有效，并返回 (是否有效, responseTime)"""
+    """验证代理是否有效，并返回 (是否有效, 延迟ms)"""
     if ip_port in verified_cache:
         return verified_cache[ip_port]
 
@@ -24,7 +24,6 @@ def check_proxy(ip_port):
         resp = requests.get(url, timeout=6)
         data = resp.json()
 
-        # 严格判断是否有效
         valid = (
             isinstance(data, dict)
             and data.get("success") is True
@@ -33,11 +32,8 @@ def check_proxy(ip_port):
         response_time = data.get("responseTime", -1)
         verified_cache[ip_port] = (valid, response_time)
 
-        if valid:
-            print(f"[✅ 有效] {ip_port}  延迟: {response_time}ms")
-        else:
-            print(f"[❌ 无效] {ip_port}  延迟: {response_time}ms")
-
+        status = "✅ 有效" if valid else "❌ 无效"
+        print(f"[{status}] {ip_port}  延迟: {response_time}ms")
         return valid, response_time
 
     except Exception as e:
@@ -46,8 +42,11 @@ def check_proxy(ip_port):
         return False, -1
 
 
-def validate_batch(ip_lines, max_workers):
-    """多线程验证批次 IP，返回有效 IP 列表"""
+def validate_batch(ip_lines, max_workers, remaining_quota):
+    """
+    多线程验证批次 IP
+    只返回不超过 remaining_quota 的有效结果
+    """
     ip_ports = [ip.split('#')[0] for ip in ip_lines]
     valid_ips = []
 
@@ -56,20 +55,24 @@ def validate_batch(ip_lines, max_workers):
         for future in as_completed(futures):
             ip = futures[future]
             try:
-                valid, response_time = future.result()
+                valid, delay = future.result()
                 if valid:
-                    # 找到对应的原始行
                     for line in ip_lines:
                         if line.startswith(ip):
-                            valid_ips.append(f"{line}  # 延迟: {response_time}ms")
+                            valid_ips.append(f"{line}  # 延迟: {delay}ms")
                             break
+                    # 一旦达到配额就立即停止
+                    if len(valid_ips) >= remaining_quota:
+                        break
             except Exception as e:
                 print(f"[线程错误] {ip} -> {e}")
-    return valid_ips
+
+    # 截断，防止超出配额
+    return valid_ips[:remaining_quota]
 
 
 def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
-    """按国家筛选 IP，每个国家严格 max_per_country 条有效 IP"""
+    """按国家筛选 IP，每个国家严格限制 max_per_country 条有效 IP"""
     lines = input_data.strip().split('\n')
     country_map = defaultdict(list)
 
@@ -86,7 +89,7 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
 
     result = []
 
-    # 逐国家验证
+    # 逐个国家处理
     for country in sorted(country_map.keys()):
         candidates = country_map[country]
         print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
@@ -94,18 +97,11 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
         valid_lines = []
         index = 0
 
-        # 限制每个国家的有效 IP 数量
         while len(valid_lines) < max_per_country and index < len(candidates):
+            remaining = max_per_country - len(valid_lines)
             batch = candidates[index:index + MAX_THREADS]
-            valid_batch = validate_batch(batch, MAX_THREADS)
-
-            # 按顺序添加到有效列表，严格控制数量
-            for line in valid_batch:
-                if len(valid_lines) < max_per_country:
-                    valid_lines.append(line)
-                else:
-                    break
-
+            valid_batch = validate_batch(batch, MAX_THREADS, remaining)
+            valid_lines.extend(valid_batch)
             index += MAX_THREADS
 
         print(f"✅ {country} 有效 IP 数量: {len(valid_lines)} / {max_per_country}")
