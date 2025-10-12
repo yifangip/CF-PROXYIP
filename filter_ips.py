@@ -6,10 +6,10 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ------------------------- 配置区 -------------------------
-MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
+MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 3                                        # 每批次线程数
+MAX_THREADS = 5                                        # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}
@@ -68,7 +68,7 @@ def validate_country(country, ip_lines, max_per_country):
                 if valid:
                     with lock:
                         if len(valid_ips) < max_per_country:
-                            valid_ips.append(f"{ip}  # 延迟: {delay}ms")
+                            valid_ips.append(f"{ip}#延迟:{delay}ms")
                             if len(valid_ips) >= max_per_country:
                                 stop_flag.set()  # 达到目标后通知其他线程停止
             except Exception as e:
