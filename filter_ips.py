@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 5                                        # 每批次并发线程数
+MAX_THREADS = 3                                        # 每批次并发线程数（调低以防并发过多）
 
 # ------------------------- 缓存 & 锁 -------------------------
 verified_cache = {}
@@ -26,7 +26,7 @@ def check_proxy(ip_port, stop_flag):
 
     url = CHECK_API.format(ip_port)
     try:
-        resp = requests.get(url, timeout=6)
+        resp = requests.get(url, timeout=10)  # 增加了超时时间
         data = resp.json()
 
         valid = (
@@ -39,7 +39,6 @@ def check_proxy(ip_port, stop_flag):
 
         with lock:
             status = "✅ 有效" if valid else "❌ 无效"
-            # 只有在没有 stop 的情况下打印，避免在达到 quota 后继续输出
             if not stop_flag.is_set():
                 print(f"[{status}] {ip_port}  延迟: {delay}ms")
 
@@ -53,8 +52,7 @@ def check_proxy(ip_port, stop_flag):
 
 def validate_batch(ip_batch, stop_flag):
     """
-    对一小批 ip（原始行，如 '1.2.3.4:443#CC'）并发验证，
-    返回本批次中按出现顺序的有效行（已附带延迟）。
+    对一小批 ip（原始行，如 '1.2.3.4:443#CC'）并发验证，返回本批次中按出现顺序的有效行（已附带延迟）。
     不会返回超过 remaining_quota（外部控制）。
     """
     ip_ports = [line.split('#')[0] for line in ip_batch]
