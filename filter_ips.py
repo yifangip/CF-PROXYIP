@@ -8,11 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 10  # 每批次线程数
+MAX_THREADS = 3  # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}  # {ip_port: (valid, responseTime)}
-
 
 def check_proxy(ip_port):
     """验证代理是否有效，并返回 (是否有效, 延迟ms)"""
@@ -89,7 +88,7 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
 
     result = []
 
-    # 逐个国家处理
+    # 逐国家验证
     for country in sorted(country_map.keys()):
         candidates = country_map[country]
         print(f"\n🌍 验证 {country} 的 IP，目标数量: {max_per_country}")
