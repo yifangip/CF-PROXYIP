@@ -112,7 +112,7 @@ def main():
         configs, ip_counts, total_ips, log_entries = fetch_subdomain_configs(IP_LIST_URL)
 
         # 写日志文件
-        log_file_name = f"proxyip_sync_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        log_file_name = f"proxyip_{datetime.now().strftime('%Y-%m-%d')}.txt"
         with open(log_file_name, "w") as f:
             f.write("\n".join(log_entries))
 
