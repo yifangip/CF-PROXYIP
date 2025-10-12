@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 5))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 3  # 每批次线程数
+MAX_THREADS = 10  # 每批次线程数
 
 # ------------------------- 缓存 -------------------------
 verified_cache = {}  # {ip_port: (valid, responseTime)}
@@ -101,6 +101,10 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
             batch = candidates[index:index + MAX_THREADS]
             valid_batch = validate_batch(batch, MAX_THREADS, remaining)
             valid_lines.extend(valid_batch)
+            
+            # 如果已经达到了目标数量，跳过剩余 IP 验证
+            if len(valid_lines) >= max_per_country:
+                break
             index += MAX_THREADS
 
         print(f"✅ {country} 有效 IP 数量: {len(valid_lines)} / {max_per_country}")
