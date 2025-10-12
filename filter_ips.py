@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数 默认2
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 5                                        # 每批次并发线程数 默认5
+MAX_THREADS = 2                                        # 每批次并发线程数 默认5
 
 # ------------------------- 缓存 & 锁 -------------------------
 verified_cache = {}
