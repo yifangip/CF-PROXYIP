@@ -31,8 +31,7 @@ jobs:
     - name: Run filter_ips.py script
       run: |
         python filter_ips.py
-        # 不输出完整的 IP 地址和端口信息，避免日志中出现敏感信息
-        echo "IP Filtering completed, check filtered_ips.txt for results."
+        cat filtered_ips.txt  # 输出到 Actions 日志
 
     - name: Commit and push changes
       run: |
