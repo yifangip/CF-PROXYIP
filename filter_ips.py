@@ -89,10 +89,13 @@ def filter_ips(input_data, max_per_country=MAX_PER_COUNTRY):
             ip_ports = [ip for ip, _ in batch]
             valid_ips = validate_ips_multithread(ip_ports)
 
-            # 匹配原始行并添加到结果
+            # 严格限制数量
             for ip, line in batch:
-                if ip in valid_ips and len(valid_lines) < max_per_country:
-                    valid_lines.append(line)
+                if ip in valid_ips:
+                    if len(valid_lines) < max_per_country:
+                        valid_lines.append(line)
+                    else:
+                        break  # 已达到上限，停止添加
 
             if len(valid_lines) >= max_per_country:
                 break
@@ -117,7 +120,9 @@ if __name__ == "__main__":
 
     output_data = filter_ips(input_data)
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(output_data)
-
-    print(f"\n✅ 已生成 {output_file} 文件，共 {len(output_data.splitlines())} 条有效代理。")
+    if output_data.strip():
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(output_data)
+        print(f"\n✅ 已生成 {output_file} 文件，共 {len(output_data.splitlines())} 条有效代理。")
+    else:
+        print("\n⚠️ 没有找到任何有效代理 IP。")
