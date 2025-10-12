@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_PER_COUNTRY = int(os.getenv("MAX_PER_COUNTRY", 2))  # 每个国家最大条数
 IP_URL = "https://zip.cm.edu.kg/all.txt"                # 远程 IP 列表
 CHECK_API = "https://check.proxyip.cmliussss.net/check?proxyip={}"  # 验证 API
-MAX_THREADS = 2                                        # 每批次并发线程数
+MAX_THREADS = 5                                        # 每批次并发线程数
 
 # ------------------------- 缓存 & 锁 -------------------------
 verified_cache = {}
@@ -69,7 +69,7 @@ def validate_batch(ip_batch, stop_flag):
                     # 找到对应的原始行（保持原始顺序以便后面截取）
                     for line in ip_batch:
                         if line.startswith(ip):
-                            valid_lines.append(f"{line}#延迟:{delay}ms")
+                            valid_lines.append(f"{line}  # 延迟:{delay}ms")
                             break
                 # 如果 stop_flag 已经被设定，则我们可以尽早返回
                 if stop_flag.is_set():
