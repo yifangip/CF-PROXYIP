@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ------------------------- 配置区 -------------------------
 cf_tokens_str = os.getenv("CF_TOKENS", "").strip()
@@ -19,6 +19,7 @@ MAX_IPS_PER_SUBDOMAIN = 150  # 避免 Cloudflare 记录超限，每个子域名�
 
 # ------------------------- Telegram 推送 -------------------------
 def send_telegram_message(text: str) -> None:
+    """发送文本消息到 Telegram"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     params = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
     response = requests.get(url, params=params)
@@ -27,18 +28,19 @@ def send_telegram_message(text: str) -> None:
     else:
         print("Telegram 推送成功")
 
+
 def send_telegram_file(file_path: str, ip_counts: dict, total_ips: int) -> None:
     """发送日志文件到 Telegram，文件提示在国家统计后显示"""
-now_utc8 = datetime.utcnow() + timedelta(hours=8)
+    now_utc8 = datetime.utcnow() + timedelta(hours=8)
 
-stats_text = (
-    f"🕒 更新时间：{now_utc8.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)\n"
-    f"🌍 总共获取 IP：{total_ips}\n"
-    f"*🌎 各国家 IP 数量统计:*\n" +
-    "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
-)
+    stats_text = (
+        f"🕒 更新时间：{now_utc8.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)\n"
+        f"🌍 总共获取 IP：{total_ips}\n"
+        f"*🌎 各国家 IP 数量统计:*\n" +
+        "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
+    )
 
-caption = f"{stats_text}\n📄 日志文件已上传"
+    caption = f"{stats_text}\n📄 日志文件已上传"
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     with open(file_path, "rb") as f:
@@ -49,7 +51,8 @@ caption = f"{stats_text}\n📄 日志文件已上传"
             print(f"Telegram 文件上传失败: {response.status_code} {response.text}")
         else:
             print("Telegram 文件上传成功")
-            
+
+
 # ------------------------- Cloudflare 函数 -------------------------
 def fetch_zone_info(api_token: str) -> tuple:
     headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
@@ -59,6 +62,7 @@ def fetch_zone_info(api_token: str) -> tuple:
     if not zones:
         raise Exception("未找到域区信息")
     return zones[0]["id"], zones[0]["name"]
+
 
 def fetch_subdomain_configs(url: str):
     response = requests.get(url)
@@ -70,32 +74,25 @@ def fetch_subdomain_configs(url: str):
     for line in lines:
         if not line.strip() or "#" not in line:
             continue
+
         ip_raw, country = line.strip().split("#", 1)
-        
-        # 提取 IP 地址和延迟信息
         ip_info = ip_raw.split(":")
         ip = ip_info[0].strip()
-        
-        # 提取延迟信息，格式为 "延迟:394ms"
+
+        # 提取延迟
         latency = ""
         if "延迟" in country:
             latency = country.split("延迟")[1].strip()
-            country = country.split('#')[0].strip()  # 提取国家信息
+            country = country.split('#')[0].strip()
 
-        # 如果没有延迟信息，则默认为未知
         if not latency:
             latency = "未知"
 
-        # 提取国家信息并确保小写
         country = country.split('#')[0].strip().lower()
-
         if not ip or not country:
             continue
 
-        # Cloudflare 记录格式保持原有：proxyip.国家
-        cf_subdomain = f"proxyip.{country}"  # 保持原格式：proxyip.国家
-        
-        # Telegram 推送使用 proxyip.国家.yifang.filegear-sg.me 格式
+        cf_subdomain = f"proxyip.{country}"
         tg_subdomain = f"proxyip.{country}.yifang.filegear-sg.me"
 
         if cf_subdomain not in configs:
@@ -103,8 +100,7 @@ def fetch_subdomain_configs(url: str):
         configs[cf_subdomain]["v4"].append(ip)
         ip_counts[country] = ip_counts.get(country, 0) + 1
         total_ips += 1
-        
-        # 添加延迟信息到日志（使用 Telegram 推送格式）
+
         log_entries.append(f"{tg_subdomain} → {ip} → 延迟:{latency}")
 
     return configs, ip_counts, total_ips, log_entries
@@ -128,15 +124,19 @@ def update_dns_record(api_token, zone_id, subdomain, domain, dns_type, operation
                 print(f"删除 {subdomain} {dns_type} 记录: {record['id']}")
 
     elif operation == "add" and ip_list:
-        ip_list = ip_list[:MAX_IPS_PER_SUBDOMAIN]  # 限制 IP 数量
+        ip_list = ip_list[:MAX_IPS_PER_SUBDOMAIN]
         for ip in ip_list:
             payload = {"type": dns_type, "name": full_name, "content": ip, "ttl": 1, "proxied": False}
-            resp = requests.post(f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
-                                 headers=headers, json=payload)
+            resp = requests.post(
+                f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+                headers=headers,
+                json=payload
+            )
             if resp.status_code in (200, 201):
                 print(f"添加 {subdomain} {dns_type} 记录: {ip}")
             else:
                 print(f"添加 {dns_type} 记录失败: {subdomain} IP {ip} 错误 {resp.status_code} {resp.text}")
+
 
 # ------------------------- 主函数 -------------------------
 def main():
@@ -151,9 +151,9 @@ def main():
         # Telegram 上传日志文件并附带国家统计
         send_telegram_file(log_file_name, ip_counts, total_ips)
 
-        # DNS 更新
+        # Cloudflare DNS 更新
         for idx, token in enumerate(api_tokens, start=1):
-            print("="*50)
+            print("=" * 50)
             print(f"开始处理 API Token #{idx}")
             zone_id, domain = fetch_zone_info(token)
             print(f"域区 ID: {zone_id} | 域名: {domain}")
@@ -164,11 +164,12 @@ def main():
                     update_dns_record(token, zone_id, subdomain, domain, "A", "add", ip_list)
 
             print(f"结束处理 API Token #{idx}")
-            print("="*50 + "\n")
+            print("=" * 50 + "\n")
 
     except Exception as e:
         print(f"错误: {e}")
         send_telegram_message(f"错误: {e}")
+
 
 if __name__ == "__main__":
     main()
