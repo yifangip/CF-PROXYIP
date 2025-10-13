@@ -29,8 +29,13 @@ def send_telegram_message(text: str) -> None:
 
 def send_telegram_file(file_path: str, ip_counts: dict, total_ips: int) -> None:
     """发送日志文件到 Telegram，文件提示在国家统计后显示"""
-    stats_text = f"🕒 更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"🌍 总共获取 IP：{total_ips}\n*🌎 各国家 IP 数量统计:*\n" + \
-                 "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
+now_utc8 = datetime.utcnow() + timedelta(hours=8)
+stats_text = (
+    f"🕒 更新时间：{now_utc8.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)\n"
+    f"🌍 总共获取 IP：{total_ips}\n"
+    f"*🌎 各国家 IP 数量统计:*\n" +
+    "\n".join([f"• {k.upper()}: `{v}` 条" for k, v in ip_counts.items()])
+)            
     caption = f"{stats_text}\n📄 日志文件已上传"
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
